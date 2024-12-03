@@ -1,21 +1,24 @@
+use crate::data::tooltip::{SkillData, TooltipData};
+use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
+use crate::utils::parse_field_line;
 use std::collections::HashMap;
 use std::fs;
-use crate::data::tooltip::{SkillData, TooltipData};
-use crate::utils::parse_field_line;
 
 pub fn parse_tooltip_files(tooltip_filename: &str, translation_filename: &str) -> TooltipData {
     let mut data = TooltipData::default();
 
     // Parse main tooltip file
-    let tooltip_content = fs::read_to_string(tooltip_filename).expect("Failed to read tooltip file");
-    data.skills = parse_content(&tooltip_content);
+    let tooltip_content =
+        fs::read_to_string(tooltip_filename).expect("Failed to read tooltip file");
+    data.skill_manager.skills = parse_content(&tooltip_content);
 
     // Parse translation file
-    let translation_content = fs::read_to_string(translation_filename).expect("Failed to read translation file");
-    data.translation_skills = parse_content(&translation_content);
+    let translation_content =
+        fs::read_to_string(translation_filename).expect("Failed to read translation file");
+    data.skill_manager.translation_skills = parse_content(&translation_content);
 
     // Set first skill ID as current if any exists
-    if let Some(first_id) = data.skills.keys().next() {
+    if let Some(first_id) = data.skill_manager.skills.keys().next() {
         data.current_id = first_id.clone();
     }
 
@@ -31,7 +34,9 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
     while let Some(line) = lines.next() {
         let trimmed = line.trim();
 
-        if trimmed.is_empty() { continue; }
+        if trimmed.is_empty() {
+            continue;
+        }
 
         // Parse section header [XXXX]
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
@@ -39,13 +44,17 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
                 entries.insert(current_id.clone(), current_data);
                 current_data = SkillData::default();
             }
-            current_id = trimmed[1..trimmed.len()-1].to_string();
+            current_id = trimmed[1..trimmed.len() - 1].to_string();
             current_data.id = current_id.clone();
             continue;
         }
 
         // Parse tooltip fields
         if let Some((field_name, value)) = parse_field_line(trimmed) {
+            if !is_available_field_name(field_name) {
+                continue;
+            }
+
             let field_value = if value.ends_with('{') {
                 let next_line = lines.peek().map(|line| line.trim());
                 if next_line.map_or(false, |line| line.starts_with("[=[")) {
@@ -60,10 +69,10 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
             };
 
             match field_name {
-                "Researchtip" => current_data.researchtip = field_value,
-                "Researchubertip" => current_data.researchubertip = field_value,
-                "Tip" => current_data.tip = field_value,
-                "Ubertip" => current_data.ubertip = field_value,
+                RESEARCHTIP => current_data.researchtip = field_value,
+                RESEARCHUBERTIP => current_data.researchubertip = field_value,
+                TIP => current_data.tip = field_value,
+                UBERTIP => current_data.ubertip = field_value,
                 _ => {}
             }
         }
@@ -77,12 +86,21 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
     entries
 }
 
+fn is_available_field_name(field_name: &str) -> bool {
+    match field_name {
+        RESEARCHTIP | RESEARCHUBERTIP | TIP | UBERTIP => true,
+        _ => false,
+    }
+}
+
 fn parse_single_line_string(content: &str) -> String {
     content.trim_matches('"').trim_matches('\'').to_string()
 }
 
 fn parse_multi_line_string<'a, I>(lines: &mut std::iter::Peekable<I>) -> String
-where I: Iterator<Item = &'a str> {
+where
+    I: Iterator<Item = &'a str>,
+{
     let mut content = String::new();
     let mut first_line = true;
 
@@ -107,7 +125,9 @@ where I: Iterator<Item = &'a str> {
 }
 
 fn parse_string_array<'a, I>(lines: &mut std::iter::Peekable<I>) -> Vec<String>
-where I: Iterator<Item = &'a str> {
+where
+    I: Iterator<Item = &'a str>,
+{
     let mut result = Vec::new();
 
     while let Some(line) = lines.next() {
@@ -117,8 +137,8 @@ where I: Iterator<Item = &'a str> {
         }
         if trimmed.starts_with('"') && trimmed.contains(',') {
             let content = trimmed
-                .trim_start_matches('"')  // 移除開頭的引號
-                .trim_end_matches("\",")  // 移除結尾的引號和逗號
+                .trim_start_matches('"') // 移除開頭的引號
+                .trim_end_matches("\",") // 移除結尾的引號和逗號
                 .to_string();
             result.push(content);
         }
@@ -128,7 +148,9 @@ where I: Iterator<Item = &'a str> {
 }
 
 fn parse_multi_line_string_array<'a, I>(lines: &mut std::iter::Peekable<I>) -> Vec<String>
-where I: Iterator<Item = &'a str> {
+where
+    I: Iterator<Item = &'a str>,
+{
     let mut result = Vec::new();
     let mut current_string = String::new();
     let mut in_multiline = false;

@@ -1,5 +1,6 @@
 pub mod parser;
 pub mod export;
+pub mod common;
 
 pub fn parse_field_line(line: &str) -> Option<(&str, &str)> {
     let parts: Vec<&str> = line.splitn(2, '=').collect();

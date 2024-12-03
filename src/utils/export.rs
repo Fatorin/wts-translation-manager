@@ -1,6 +1,9 @@
 use crate::data::tooltip::TooltipData;
+use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
 use crate::utils::parse_field_line;
 use std::fs;
+
+const OUTPUT_FILE_NAME: &str = "output.ini";
 
 struct ContentProcessor<'a> {
     tooltip_data: &'a TooltipData,
@@ -51,7 +54,9 @@ impl<'a> ContentProcessor<'a> {
             .take_while(|line| !line.trim().ends_with("]=]"))
             .collect();
 
-        let content = if let Some(translation) = get_translation(self.tooltip_data, &self.current_id, field_name, 0) {
+        let content = if let Some(translation) =
+            get_translation(self.tooltip_data, &self.current_id, field_name, 0)
+        {
             if !translation.trim().is_empty() {
                 translation
             } else {
@@ -64,22 +69,27 @@ impl<'a> ContentProcessor<'a> {
         self.write_multiline_content(field_name, &content);
     }
 
-    fn process_array(&mut self, field_name: &str, lines: &mut std::iter::Peekable<std::str::Lines>) {
+    fn process_array(
+        &mut self,
+        field_name: &str,
+        lines: &mut std::iter::Peekable<std::str::Lines>,
+    ) {
         self.result.push_str(field_name);
         self.result.push_str(" = {\n");
 
         // 檢查翻譯內容
-        let translated_content = if let Some(translation) = self.tooltip_data.translation_skills.get(&self.current_id) {
-            match field_name {
-                "Researchtip" => &translation.researchtip,
-                "Researchubertip" => &translation.researchubertip,
-                "Tip" => &translation.tip,
-                "Ubertip" => &translation.ubertip,
-                _ => &vec![],
-            }
-        } else {
-            &vec![]
-        };
+        let translated_content =
+            if let Some(translation) = self.tooltip_data.skill_manager.translation_skills.get(&self.current_id) {
+                match field_name {
+                    RESEARCHTIP => &translation.researchtip,
+                    RESEARCHUBERTIP => &translation.researchubertip,
+                    TIP => &translation.tip,
+                    UBERTIP => &translation.ubertip,
+                    _ => &vec![],
+                }
+            } else {
+                &vec![]
+            };
 
         let mut line_count = 0;
 
@@ -177,7 +187,7 @@ pub fn export_translated_content(
         // Handle field lines
         if let Some((field_name, value)) = parse_field_line(trimmed) {
             match field_name {
-                "Researchtip" | "Researchubertip" | "Tip" | "Ubertip" => {
+                RESEARCHTIP | RESEARCHUBERTIP | TIP | UBERTIP => {
                     processor.current_field = field_name.to_string();
                     processor.process_field(field_name, value, line, &mut lines);
                 }
@@ -193,76 +203,62 @@ pub fn export_translated_content(
         processor.result.push('\n');
     }
 
-    fs::write("output.ini", processor.result)?;
+    fs::write(OUTPUT_FILE_NAME, processor.result)?;
     Ok(())
 }
 
 pub fn save_translation(tooltip_data: &TooltipData, filename: &str) -> Result<(), std::io::Error> {
     let mut content = String::new();
 
-    for (id, skill) in &tooltip_data.translation_skills {
-        if skill.researchtip.is_empty() &&
-            skill.researchubertip.is_empty() &&
-            skill.tip.is_empty() &&
-            skill.ubertip.is_empty() {
+    for (id, skill) in &tooltip_data.skill_manager.translation_skills {
+        if skill.researchtip.is_empty()
+            && skill.researchubertip.is_empty()
+            && skill.tip.is_empty()
+            && skill.ubertip.is_empty()
+        {
             continue;
         }
 
         content.push_str(&format!("[{}]\n", id));
-
-        if !skill.researchtip.is_empty() {
-            content.push_str(&format!("Researchtip = \"{}\"\n", skill.researchtip[0]));
-        }
-
-        if !skill.researchubertip.is_empty() {
-            if skill.researchubertip.len() == 1 {
-                if skill.researchubertip[0].contains('\n') {
-                    content.push_str("Researchubertip = [=[\n");
-                    content.push_str(&skill.researchubertip[0]);
-                    content.push_str("]=]\n");
-                } else {
-                    content.push_str(&format!("Researchubertip = \"{}\"\n", skill.researchubertip[0]));
-                }
-            } else {
-                content.push_str("Researchubertip = [=[\n");
-                content.push_str(&skill.researchubertip[0]);
-                content.push_str("]=]\n");
-            }
-        }
-
-        if !skill.tip.is_empty() {
-            if skill.tip.len() == 1 {
-                content.push_str(&format!("Tip = \"{}\"\n", skill.tip[0]));
-            } else {
-                content.push_str("Tip = {\n");
-                for tip in &skill.tip {
-                    content.push_str(&format!("\"{}\",\n", tip));
-                }
-                content.push_str("}\n");
-            }
-        }
-
-        if !skill.ubertip.is_empty() {
-            if skill.ubertip.len() == 1 {
-                content.push_str("Ubertip = [=[\n");
-                content.push_str(&skill.ubertip[0]);
-                content.push_str("]=]\n");
-            } else {
-                content.push_str("Ubertip = {\n");
-                for tip in &skill.ubertip {
-                    content.push_str("[=[\n");
-                    content.push_str(tip);
-                    content.push_str("]=],\n");
-                }
-                content.push_str("}\n");
-            }
-        }
+        content.push_str(&format_tip("Researchtip", &skill.researchtip));
+        content.push_str(&format_tip("Researchubertip", &skill.researchubertip));
+        content.push_str(&format_tip("Tip", &skill.tip));
+        content.push_str(&format_tip("Ubertip", &skill.ubertip));
 
         content.push('\n');
     }
 
     fs::write(filename, content)?;
     Ok(())
+}
+
+fn format_tip(name: &str, tips: &[String]) -> String {
+    if tips.is_empty() {
+        return String::new();
+    }
+
+    let contains_multiline = tips.iter().any(|tip| tip.contains('\n'));
+
+    if tips.len() == 1 {
+        if contains_multiline {
+            format!("{} = [=[\n{}]=]\n", name, tips[0])
+        } else {
+            format!("{} = \"{}\"\n", name, tips[0])
+        }
+    } else {
+        let mut result = format!("{} = {{\n", name);
+        for tip in tips {
+            if contains_multiline {
+                result.push_str("[=[\n");
+                result.push_str(tip);
+                result.push_str("]=],\n");
+            } else {
+                result.push_str(&format!("\"{}\",\n", tip));
+            }
+        }
+        result.push_str("}\n");
+        result
+    }
 }
 
 // Helper functions remain unchanged
@@ -272,12 +268,12 @@ fn get_translation(
     field: &str,
     index: usize,
 ) -> Option<String> {
-    if let Some(translation) = tooltip_data.translation_skills.get(id) {
+    if let Some(translation) = tooltip_data.skill_manager.translation_skills.get(id) {
         let vec = match field {
-            "Researchtip" => &translation.researchtip,
-            "Researchubertip" => &translation.researchubertip,
-            "Tip" => &translation.tip,
-            "Ubertip" => &translation.ubertip,
+            RESEARCHTIP => &translation.researchtip,
+            RESEARCHUBERTIP => &translation.researchubertip,
+            TIP => &translation.tip,
+            UBERTIP => &translation.ubertip,
             _ => return None,
         };
         vec.get(index).cloned()
