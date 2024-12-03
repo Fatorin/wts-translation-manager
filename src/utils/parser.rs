@@ -1,5 +1,5 @@
 use crate::data::tooltip::{SkillData, TooltipData};
-use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
+use crate::utils::common::{is_available_skill_data, RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
 use crate::utils::parse_field_line;
 use std::collections::HashMap;
 use std::fs;
@@ -40,10 +40,6 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
 
         // Parse section header [XXXX]
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            if !current_id.is_empty() {
-                entries.insert(current_id.clone(), current_data);
-                current_data = SkillData::default();
-            }
             current_id = trimmed[1..trimmed.len() - 1].to_string();
             current_data.id = current_id.clone();
             continue;
@@ -76,11 +72,11 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
                 _ => {}
             }
         }
-    }
 
-    // Save the last entry
-    if !current_id.is_empty() {
-        entries.insert(current_id.clone(), current_data);
+        if is_available_skill_data(&current_data) {
+            entries.insert(current_id.clone(), current_data);
+            current_data = SkillData::default();
+        }
     }
 
     entries

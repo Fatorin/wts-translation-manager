@@ -4,11 +4,6 @@ use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
 use crate::utils::export::{export_translated_content, save_translation};
 use crate::utils::parser;
 use eframe::egui;
-use lazy_static::lazy_static;
-
-lazy_static! {
-    static ref DEFAULT_SKILL: SkillData = SkillData::default();
-}
 
 const SOURCE_FILE_NAME: &str = "source.ini";
 const TRANSLATE_FILE_NAME: &str = "translation.ini";

@@ -5,7 +5,12 @@ edition = "2021"
 
 [dependencies]
 eframe = "0.29.1"
-lazy_static = "1.5.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["winuser"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

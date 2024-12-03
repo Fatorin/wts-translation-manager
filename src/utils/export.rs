@@ -1,5 +1,5 @@
 use crate::data::tooltip::TooltipData;
-use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
+use crate::utils::common::{is_available_skill_data, RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
 use crate::utils::parse_field_line;
 use std::fs;
 
@@ -78,18 +78,22 @@ impl<'a> ContentProcessor<'a> {
         self.result.push_str(" = {\n");
 
         // 檢查翻譯內容
-        let translated_content =
-            if let Some(translation) = self.tooltip_data.skill_manager.translation_skills.get(&self.current_id) {
-                match field_name {
-                    RESEARCHTIP => &translation.researchtip,
-                    RESEARCHUBERTIP => &translation.researchubertip,
-                    TIP => &translation.tip,
-                    UBERTIP => &translation.ubertip,
-                    _ => &vec![],
-                }
-            } else {
-                &vec![]
-            };
+        let translated_content = if let Some(translation) = self
+            .tooltip_data
+            .skill_manager
+            .translation_skills
+            .get(&self.current_id)
+        {
+            match field_name {
+                RESEARCHTIP => &translation.researchtip,
+                RESEARCHUBERTIP => &translation.researchubertip,
+                TIP => &translation.tip,
+                UBERTIP => &translation.ubertip,
+                _ => &vec![],
+            }
+        } else {
+            &vec![]
+        };
 
         let mut line_count = 0;
 
@@ -211,11 +215,7 @@ pub fn save_translation(tooltip_data: &TooltipData, filename: &str) -> Result<()
     let mut content = String::new();
 
     for (id, skill) in &tooltip_data.skill_manager.translation_skills {
-        if skill.researchtip.is_empty()
-            && skill.researchubertip.is_empty()
-            && skill.tip.is_empty()
-            && skill.ubertip.is_empty()
-        {
+        if !is_available_skill_data(skill) {
             continue;
         }
 
