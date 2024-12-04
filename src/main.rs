@@ -1,10 +1,9 @@
-#![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
-use crate::app::tooltip::TooltipApp;
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 
-mod app;
-mod data;
-mod ui;
-mod utils;
+use wts_translation_manager::app::tooltip::TooltipApp;
 
 fn main() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();
