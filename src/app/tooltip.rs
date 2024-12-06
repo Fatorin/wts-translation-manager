@@ -128,7 +128,7 @@ impl TooltipApp {
         }
 
         if ui.button("新增/重置翻譯").clicked() {
-            match self.data.add_localized(&self.data.current_id) {
+            match self.data.add_localized(self.data.current_id.clone()) {
                 Ok(_) => self.update_status("已新增/重置翻譯當前技能的翻譯內容"),
                 Err(e) => self.update_status(format!("操作失敗：{}", e)),
             }

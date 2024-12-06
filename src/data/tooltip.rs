@@ -40,15 +40,16 @@ impl TooltipData {
         }
     }
 
-    pub fn add_localized(&self, key: &str) -> Result<(), String> {
+    pub fn add_localized(&mut self, key: String) -> Result<(), String> {
         if self.object_manager.is_empty() {
             return Err(String::from("尚未讀取資料"));
         }
 
-        if !self.object_manager.is_exist(&BString::from(key)) {
+        if !self.object_manager.is_exist(&BString::from(key.as_str())) {
             return Err(format!("Object '{}' isn't exists", key));
         }
-        Ok(())
+
+        Ok(self.object_manager.add_localized(&key)?)
     }
 
     pub fn import(&mut self, file_path: &std::path::Path) -> Result<(), String> {
@@ -171,6 +172,21 @@ impl ObjectManager {
         }
 
         ObjectModificationTable { original, custom }
+    }
+
+    fn add_localized(&mut self, id: &str) -> Result<(), String> {
+        let skill_id = BString::from(id);
+        let data = self.get_skill_from_id(&skill_id)?;
+        self.localized.insert(skill_id, data);
+        Ok(())
+    }
+
+    fn get_skill_from_id(&self, id: &BString) -> Result<Vec<Modification>, String> {
+        if let Some(data) = self.source.get(id) {
+            Ok(data.clone())
+        } else {
+            Err(format!("Skill '{}' not found", id))
+        }
     }
 
     pub fn is_exist(&self, id: &BString) -> bool {
