@@ -16,17 +16,6 @@ pub enum ModificationType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum FileTypeExtension {
-    Units,          // w3u
-    Items,          // w3t
-    Destructables,  // w3b
-    Doodads,       // w3d
-    Abilities,      // w3a
-    Buffs,         // w3h
-    Upgrades,      // w3q
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum ObjectType {
     Units,
     Items,
@@ -35,6 +24,31 @@ pub enum ObjectType {
     Abilities,
     Buffs,
     Upgrades,
+}
+
+impl ObjectType {
+    pub fn all_extensions() -> Vec<&'static str> {
+        vec!["w3u", "w3t", "w3b", "w3d", "w3a", "w3h", "w3q"]
+    }
+
+    pub fn from_path(path: &std::path::Path) -> Option<Self> {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .and_then(Self::from_extension)
+    }
+
+    fn from_extension(ext: &str) -> Option<Self> {
+        match ext.to_lowercase().as_str() {
+            "w3u" => Some(ObjectType::Units),
+            "w3t" => Some(ObjectType::Items),
+            "w3b" => Some(ObjectType::Destructables),
+            "w3d" => Some(ObjectType::Doodads),
+            "w3a" => Some(ObjectType::Abilities),
+            "w3h" => Some(ObjectType::Buffs),
+            "w3q" => Some(ObjectType::Upgrades),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,12 +1,9 @@
-use crate::data::tooltip::{SkillData, SkillManager, TooltipData};
+use crate::data::tooltip::TooltipData;
+use crate::types::{Modification, ObjectType};
 use crate::ui::fonts::setup_custom_fonts;
-use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
-use crate::utils::export::{export_translated_content, save_translation};
-use crate::utils::parser;
+use bstr::BString;
 use eframe::egui;
-
-const SOURCE_FILE_NAME: &str = "source.ini";
-const TRANSLATE_FILE_NAME: &str = "translation.ini";
+use std::path::PathBuf;
 
 pub struct TooltipApp {
     data: TooltipData,
@@ -17,7 +14,7 @@ pub struct TooltipApp {
 impl TooltipApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_custom_fonts(&cc.egui_ctx);
-        let data = parser::parse_tooltip_files(SOURCE_FILE_NAME, TRANSLATE_FILE_NAME);
+        let mut data = TooltipData::new();
         let status = String::new();
         let search_text = String::new();
         Self {
@@ -29,7 +26,6 @@ impl TooltipApp {
 
     fn render_top_panel(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.add_space(1.0);
             ui.horizontal(|ui| {
                 self.render_skill_filter(ui);
                 self.render_skill_selector(ui);
@@ -62,21 +58,18 @@ impl TooltipApp {
             egui::TextEdit::singleline(&mut self.search_text).hint_text("輸入技能ID後按Enter搜尋");
 
         if ui.add(text_edit).lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-            let search_text = self.search_text.as_str();
-
-            if self.data.current_id == search_text {
+            if self.data.current_id == self.search_text {
                 return;
             }
 
             if self
                 .data
                 .skill_manager
-                .skills
-                .contains_key(&self.search_text)
+                .source
+                .contains_key(&BString::from(self.search_text.as_str()))
             {
-                self.data.current_id = search_text.to_string();
+                self.data.current_id = self.search_text.clone();
                 self.update_status(format!("已切換技能組至[{}]", self.search_text));
-                //self.search_text.clear();
             } else {
                 self.update_status("找不到技能ID");
             }
@@ -84,12 +77,16 @@ impl TooltipApp {
     }
 
     fn render_skill_selector(&mut self, ui: &mut egui::Ui) {
-        egui::ComboBox::from_label("選擇技能")
+        egui::ComboBox::from_id_salt("skill_selector")
             .selected_text(&self.data.current_id)
             .show_ui(ui, |ui| {
                 for id in self.data.skill_manager.get_skill_ids() {
                     if ui
-                        .selectable_value(&mut self.data.current_id, id.clone(), &id)
+                        .selectable_value(
+                            &mut self.data.current_id,
+                            id.to_string(),
+                            &id.to_string(),
+                        )
                         .clicked()
                     {
                         self.update_status(format!("已切換技能組至[{id}]"))
@@ -99,45 +96,85 @@ impl TooltipApp {
     }
 
     fn render_action_buttons(&mut self, ui: &mut egui::Ui) {
-        if ui.button("資料匯出").clicked() {
+        if ui.button("開啟檔案").clicked() {
+            if let Some(path) = pick_war3_file() {
+                match self.data.import(&path) {
+                    Ok(_) => {
+                        self.update_status("讀取檔案成功");
+                    }
+                    Err(e) => {
+                        self.update_status(format!("讀取失敗：{}", e));
+                    }
+                }
+            } else {
+                self.update_status("沒有選擇檔案");
+            }
+        }
+
+        if ui.button("匯出檔案").clicked() {
+            !todo!("");
+            /*
             match export_translated_content(&self.data, SOURCE_FILE_NAME) {
                 Ok(_) => self.update_status("匯出成功"),
                 Err(e) => self.update_status(format!("匯出失敗: {}", e)),
             }
+            */
         }
 
-        if ui.button("存檔翻譯").clicked() {
+        if ui.button("儲存翻譯").clicked() {
+            !todo!("");
+            /*
             match save_translation(&self.data, TRANSLATE_FILE_NAME) {
                 Ok(_) => self.update_status("存檔成功"),
                 Err(e) => self.update_status(format!("存檔失敗: {}", e)),
             }
+            */
         }
 
         if ui.button("新增/重置翻譯").clicked() {
             if let Some(skill) = self
                 .data
                 .skill_manager
-                .skills
-                .get(&self.data.current_id)
+                .source
+                .get(&BString::from(self.data.current_id.to_string()))
                 .cloned()
             {
+                !todo!("");
+                /*
                 self.data
                     .skill_manager
                     .translation_skills
                     .insert(self.data.current_id.clone(), skill);
+                */
                 self.update_status("已新增/重置翻譯當前技能的翻譯內容");
             }
         }
     }
 
     fn render_scroll_area(&mut self, ui: &mut egui::Ui) {
+        let manager = &mut self.data.skill_manager;
+        if manager.original_count == 0 {
+            egui::Frame::none().show(ui, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(32.0);
+                    ui.label("無資料");
+                    ui.add_space(32.0);
+                });
+            });
+            return;
+        }
+
         egui::ScrollArea::vertical()
             .id_salt("main_scroll")
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .show(ui, |ui| {
                 ui.vertical(|ui| {
-                    let manager = &mut self.data.skill_manager;
-                    render_skill_sections(ui, manager, &self.data.current_id);
+                    let (source_data, localized_data) =
+                        manager.get_data_mut(&BString::from(self.data.current_id.as_str()));
+
+                    if let Some(data) = source_data {
+                        show_split_section(ui, self.data.current_id.as_str(), data, localized_data);
+                    }
                 });
             });
     }
@@ -147,51 +184,19 @@ impl TooltipApp {
     }
 }
 
-fn render_skill_sections(ui: &mut egui::Ui, manager: &mut SkillManager, id: &str) {
-    let (source_data, localized_data) = manager.get_data_mut(id);
-
-    let mut temp_skill = SkillData::default();
-    let localized = localized_data.unwrap_or(&mut temp_skill);
-
-    if let Some(data) = source_data {
-        ui.spacing_mut().item_spacing.y = 16.0;
-        show_split_section(
-            ui,
-            RESEARCHTIP,
-            "researchtip_section",
-            &mut data.researchtip,
-            &mut localized.researchtip,
-        );
-        show_split_section(
-            ui,
-            RESEARCHUBERTIP,
-            "researchubertip_section",
-            &mut data.researchubertip,
-            &mut localized.researchubertip,
-        );
-        show_split_section(ui, TIP, "tip_section", &mut data.tip, &mut localized.tip);
-        show_split_section(
-            ui,
-            UBERTIP,
-            "ubertip_section",
-            &mut data.ubertip,
-            &mut localized.ubertip,
-        );
-    } else {
-        ui.add_space(32.0);
-        ui.label("無法讀取資料");
-        ui.add_space(32.0);
-    }
+fn pick_war3_file() -> Option<PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    dialog = dialog.add_filter("War3 Object Files", &ObjectType::all_extensions());
+    dialog.pick_file()
 }
 
 fn show_split_section(
     ui: &mut egui::Ui,
-    title: &str,
-    section_id: &str,
-    source_data: &mut Vec<String>,
-    localized_data: &mut Vec<String>,
+    id: &str,
+    source_data: &mut Vec<Modification>,
+    localized_data: Option<&mut Vec<Modification>>,
 ) {
-    ui.push_id(section_id, |ui| {
+    ui.push_id("split_section", |ui| {
         let frame = egui::Frame::group(ui.style())
             .outer_margin(egui::Margin::ZERO)
             .inner_margin(egui::Margin::same(8.0))
@@ -200,7 +205,7 @@ fn show_split_section(
 
         frame.show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.heading(title);
+                ui.heading(id);
                 ui.separator();
                 ui.add_space(4.0);
                 render_split_columns(ui, source_data, localized_data);
@@ -211,8 +216,8 @@ fn show_split_section(
 
 fn render_split_columns(
     ui: &mut egui::Ui,
-    source_data: &mut Vec<String>,
-    localized_data: &mut Vec<String>,
+    source_data: &mut Vec<Modification>,
+    localized_data: Option<&mut Vec<Modification>>,
 ) {
     let column_width = (ui.available_width() - 20.0) / 2.0;
 
@@ -220,40 +225,34 @@ fn render_split_columns(
         .num_columns(2)
         .spacing([20.0, 0.0])
         .show(ui, |ui| {
-            render_column(ui, "原文：", column_width, source_data, false);
-            render_column(ui, "翻譯：", column_width, localized_data, true);
+            render_column(ui, column_width, Some(source_data), false);
+            render_column(ui, column_width, localized_data, true);
             ui.end_row();
         });
 }
 
 fn render_column(
     ui: &mut egui::Ui,
-    label: &str,
     width: f32,
-    items: &mut Vec<String>,
+    item: Option<&mut Vec<Modification>>,
     is_editable: bool,
 ) {
     ui.vertical(|ui| {
         ui.set_width(width);
-        ui.label(label);
-        ui.add_space(4.0);
 
-        for i in 0..items.len() {
-            let mut item = items[i].clone();
-
-            let text_edit = egui::TextEdit::multiline(&mut item)
+        if let Some(data) = item {
+            let mut temp = "1234";
+            let text_edit = egui::TextEdit::multiline(&mut temp)
                 .desired_width(ui.available_width())
                 .frame(true)
                 .interactive(is_editable);
 
-            let response = egui::Frame::none()
+            egui::Frame::none()
                 .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
                 .rounding(egui::Rounding::same(2.0))
-                .show(ui, |ui| ui.add(text_edit));
-
-            if response.inner.changed() {
-                items[i] = item;
-            }
+                .show(ui, |ui| {
+                    ui.add(text_edit);
+                });
         }
     });
 }
