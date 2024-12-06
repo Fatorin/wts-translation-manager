@@ -114,24 +114,21 @@ impl TooltipApp {
         }
 
         if ui.button("匯出").clicked() {
-            match self.data.export() {
+            match self.data.export(false) {
                 Ok(e) => self.update_status(format!("匯出成功，匯出路徑: {}", e)),
                 Err(e) => self.update_status(format!("匯出失敗: {}", e)),
             }
         }
 
         if ui.button("儲存翻譯").clicked() {
-            match self.data.export() {
+            match self.data.export(true) {
                 Ok(e) => self.update_status(format!("儲存成功，儲存路徑:{}", e)),
                 Err(e) => self.update_status(format!("儲存失敗: {}", e)),
             }
         }
 
         if ui.button("新增/重置翻譯").clicked() {
-            match self
-                .data
-                .add_localized(&self.data.current_id)
-            {
+            match self.data.add_localized(&self.data.current_id) {
                 Ok(_) => self.update_status("已新增/重置翻譯當前技能的翻譯內容"),
                 Err(e) => self.update_status(format!("操作失敗：{}", e)),
             }

@@ -78,12 +78,16 @@ impl TooltipData {
         }
     }
 
-    pub fn export(&mut self) -> Result<String, String> {
+    pub fn export(&self, is_localized: bool) -> Result<String, String> {
         if self.object_manager.is_empty() {
             return Err(String::from("尚未讀取檔案或是未有翻譯檔案"));
         }
 
-        let table = self.object_manager.export()?;
+        let table = self.object_manager.export(if is_localized {
+            &self.object_manager.localized
+        } else {
+            &self.object_manager.source
+        });
 
         let bytes = ObjectsTranslator::json_to_war(&self.object_manager.object_type, table)
             .map_err(|e| format!("Failed to import json-to-war: {}", e))?;
@@ -151,11 +155,11 @@ impl ObjectManager {
         Ok(())
     }
 
-    fn export(&mut self) -> Result<ObjectModificationTable, String> {
+    fn export(&self, source: &IndexMap<BString, Vec<Modification>>) -> ObjectModificationTable {
         let mut original = IndexMap::new();
         let mut custom = IndexMap::new();
 
-        for (key, source_data) in &self.source {
+        for (key, source_data) in source {
             if let Some(original_key) = self.mapping.get(key) {
                 custom.insert(
                     BString::from(format!("{}:{}", original_key, key)),
@@ -166,7 +170,7 @@ impl ObjectManager {
             }
         }
 
-        Ok(ObjectModificationTable { original, custom })
+        ObjectModificationTable { original, custom }
     }
 
     pub fn is_exist(&self, id: &BString) -> bool {
