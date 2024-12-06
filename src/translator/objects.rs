@@ -31,7 +31,7 @@ impl ObjectsTranslator {
         }
     }
 
-    pub fn json_to_war(object_type: ObjectType, json: ObjectModificationTable) -> WarResult {
+    pub fn json_to_war(object_type: &ObjectType, json: ObjectModificationTable) -> WarResult {
         let mut buffer = HexBuffer::new();
 
         // File version
@@ -46,7 +46,7 @@ impl ObjectsTranslator {
         );
 
         buffer.add_int(json.custom.len() as i32);
-        Self::generate_table_from_json(&mut buffer, TableType::Custom, &json.custom, &object_type);
+        Self::generate_table_from_json(&mut buffer, TableType::Custom, &json.custom, object_type);
 
         Ok(buffer.get_buffer())
     }
@@ -103,7 +103,7 @@ impl ObjectsTranslator {
     }
 
     pub fn war_to_json(
-        object_type: ObjectType,
+        object_type: &ObjectType,
         buffer: Vec<u8>,
     ) -> JsonResult<ObjectModificationTable> {
         let mut result = ObjectModificationTable {
@@ -114,8 +114,8 @@ impl ObjectsTranslator {
         let mut reader = W3Buffer::new(buffer);
         let _file_version = reader.read_int();
 
-        Self::read_modification_table(&mut reader, true, &mut result, &object_type)?;
-        Self::read_modification_table(&mut reader, false, &mut result, &object_type)?;
+        Self::read_modification_table(&mut reader, true, &mut result, object_type)?;
+        Self::read_modification_table(&mut reader, false, &mut result, object_type)?;
 
         Ok(result)
     }

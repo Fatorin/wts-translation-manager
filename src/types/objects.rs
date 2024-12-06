@@ -49,6 +49,18 @@ impl ObjectType {
             _ => None,
         }
     }
+
+    pub fn get_extension(&self) -> &'static str {
+        match self {
+            ObjectType::Units => "w3u",
+            ObjectType::Items => "w3t",
+            ObjectType::Destructables => "w3b",
+            ObjectType::Doodads => "w3d",
+            ObjectType::Abilities => "w3a",
+            ObjectType::Buffs => "w3h",
+            ObjectType::Upgrades => "w3q",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

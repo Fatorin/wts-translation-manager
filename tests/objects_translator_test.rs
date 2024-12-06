@@ -27,10 +27,10 @@ mod tests {
             )
         });
 
-        let table = ObjectsTranslator::war_to_json(ObjectType::Abilities, source_bytes.clone())
+        let table = ObjectsTranslator::war_to_json(&ObjectType::Abilities, source_bytes.clone())
             .expect("Failed to convert WAR to JSON");
 
-        let output_bytes = ObjectsTranslator::json_to_war(ObjectType::Abilities, table)
+        let output_bytes = ObjectsTranslator::json_to_war(&ObjectType::Abilities, table)
             .expect("Failed to convert JSON to WAR");
 
         match compare_files(&source_bytes, &output_bytes) {
@@ -62,13 +62,13 @@ mod tests {
                 panic!("Failed to read file: {}, error: {}", file_path.display(), e)
             });
 
-            let table = ObjectsTranslator::war_to_json(object_type.clone(), source_bytes.clone())
+            let table = ObjectsTranslator::war_to_json(&object_type, source_bytes.clone())
                 .unwrap_or_else(|e| {
                     panic!("Failed to convert WAR to JSON for {}: {}", filename, e)
                 });
 
             let output_bytes =
-                ObjectsTranslator::json_to_war(object_type, table).unwrap_or_else(|e| {
+                ObjectsTranslator::json_to_war(&object_type, table).unwrap_or_else(|e| {
                     panic!("Failed to convert JSON to WAR for {}: {}", filename, e)
                 });
 

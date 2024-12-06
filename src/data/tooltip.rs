@@ -3,22 +3,25 @@ use crate::types::{Modification, ObjectModificationTable, ObjectType};
 use bstr::BString;
 use indexmap::IndexMap;
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct TooltipData {
     pub current_id: String,
-    pub skill_manager: SkillManager,
+    pub object_manager: ObjectManager,
+    pub path: PathBuf,
 }
 
 #[derive(Debug)]
-pub struct SkillManager {
-    pub source: IndexMap<BString, Vec<Modification>>,
-    pub localized: IndexMap<BString, Vec<Modification>>,
-    pub mapping: IndexMap<BString, BString>,
-    pub original_count: i32,
+pub struct ObjectManager {
+    source: IndexMap<BString, Vec<Modification>>,
+    localized: IndexMap<BString, Vec<Modification>>,
+    mapping: IndexMap<BString, BString>,
+    pub object_type: ObjectType,
+    original_count: i32,
 }
 
-impl SkillManager {
+impl ObjectManager {
     pub fn get_first_skill_id(&self) -> Option<&BString> {
         if let Some(key) = self.source.keys().next() {
             Some(key)
@@ -32,29 +35,38 @@ impl TooltipData {
     pub fn new() -> Self {
         TooltipData {
             current_id: String::new(),
-            skill_manager: SkillManager::new(),
+            object_manager: ObjectManager::new(),
+            path: PathBuf::default(),
         }
+    }
+
+    pub fn add_localized(&self, key: &str) -> Result<(), String> {
+        if self.object_manager.is_empty() {
+            return Err(String::from("尚未讀取資料"));
+        }
+
+        if !self.object_manager.is_exist(&BString::from(key)) {
+            return Err(format!("Object '{}' isn't exists", key));
+        }
+        Ok(())
     }
 
     pub fn import(&mut self, file_path: &std::path::Path) -> Result<(), String> {
         if !file_path.exists() {
             return Err(String::from("檔案不存在"));
         }
-        let source_bytes = fs::read(&file_path).map_err(|e| {
-            format!(
-                "Failed to read test file: {}, error: {}",
-                file_path.display(),
-                e
-            )
-        })?;
+
+        self.path = file_path.to_path_buf();
+
+        let source_bytes = fs::read(&file_path)
+            .map_err(|e| format!("Failed to read file: {}, error: {}", file_path.display(), e))?;
 
         if let Some(ext) = ObjectType::from_path(file_path) {
-            let table = ObjectsTranslator::war_to_json(ext, source_bytes)
+            let table = ObjectsTranslator::war_to_json(&ext, source_bytes)
                 .map_err(|e| format!("Failed to import war-to-json: {}", e))?;
-
-            self.skill_manager.import(table.clone(), table.clone())?;
-            let id = self.skill_manager.get_first_skill_id();
-            if let Some(id) = id {
+            self.object_manager.import(table, None)?;
+            self.object_manager.object_type = ext;
+            if let Some(id) = self.object_manager.get_first_skill_id() {
                 self.current_id = id.to_string();
             } else {
                 return Err(String::from("找不到第一個ID，請檢查資料是否異常"));
@@ -65,40 +77,100 @@ impl TooltipData {
             Err(String::from("不支援的副檔名"))
         }
     }
+
+    pub fn export(&mut self) -> Result<String, String> {
+        if self.object_manager.is_empty() {
+            return Err(String::from("尚未讀取檔案或是未有翻譯檔案"));
+        }
+
+        let table = self.object_manager.export()?;
+
+        let bytes = ObjectsTranslator::json_to_war(&self.object_manager.object_type, table)
+            .map_err(|e| format!("Failed to import json-to-war: {}", e))?;
+
+        let file_name = get_file_name(&self.path, &self.object_manager.object_type)?;
+
+        fs::write(&file_name, bytes).map_err(|e| {
+            format!(
+                "Failed to write file: {}, error: {}",
+                file_name.display(),
+                e
+            )
+        })?;
+
+        Ok(file_name.display().to_string())
+    }
 }
 
-impl SkillManager {
+impl ObjectManager {
     pub fn new() -> Self {
-        SkillManager {
+        ObjectManager {
             source: IndexMap::new(),
             localized: IndexMap::new(),
             mapping: IndexMap::new(),
+            object_type: ObjectType::Units,
             original_count: 0,
         }
     }
 
-    pub fn import(
+    fn import(
         &mut self,
-        table: ObjectModificationTable,
-        localized: ObjectModificationTable,
+        source: ObjectModificationTable,
+        localized: Option<ObjectModificationTable>,
     ) -> Result<(), String> {
-        self.original_count = table.original.len() as i32;
+        self.original_count = source.original.len() as i32;
 
-        for (key, data) in table.original {
+        for (key, data) in source.original {
             self.source.insert(key, data);
         }
 
-        for (key, data) in table.custom {
+        for (key, source_data) in source.custom {
             if let Some((original_key, custom_key)) = get_ids_from_custom_obj(&key) {
                 self.mapping
                     .insert(custom_key.clone(), original_key.to_owned());
-                self.source.insert(custom_key.to_owned(), data);
+                self.source.insert(custom_key.to_owned(), source_data);
             } else {
                 return Err(format!("not found custom id: {}", key));
             }
         }
 
+        if let Some(localized_data) = localized {
+            for (key, data) in localized_data.original {
+                self.source.insert(key, data);
+            }
+
+            for (key, localized_data) in localized_data.custom {
+                if let Some((_, custom_key)) = get_ids_from_custom_obj(&key) {
+                    self.localized.insert(custom_key.to_owned(), localized_data);
+                } else {
+                    return Err(format!("not found custom id: {}", key));
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    fn export(&mut self) -> Result<ObjectModificationTable, String> {
+        let mut original = IndexMap::new();
+        let mut custom = IndexMap::new();
+
+        for (key, source_data) in &self.source {
+            if let Some(original_key) = self.mapping.get(key) {
+                custom.insert(
+                    BString::from(format!("{}:{}", original_key, key)),
+                    source_data.clone(),
+                );
+            } else {
+                original.insert(key.to_owned(), source_data.to_owned());
+            }
+        }
+
+        Ok(ObjectModificationTable { original, custom })
+    }
+
+    pub fn is_exist(&self, id: &BString) -> bool {
+        self.source.contains_key(id)
     }
 
     pub fn get_data_mut(
@@ -118,8 +190,21 @@ impl SkillManager {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.original_count == 0
+        self.source.is_empty()
     }
+}
+
+fn get_file_name(path: &PathBuf, object_type: &ObjectType) -> Result<PathBuf, String> {
+    let file_name = path
+        .file_stem()
+        .ok_or("無法解析檔案名稱")?
+        .to_string_lossy();
+
+    Ok(path.with_file_name(format!(
+        "{}_new.{}",
+        file_name,
+        ObjectType::get_extension(object_type)
+    )))
 }
 
 fn get_ids_from_custom_obj(source: &BString) -> Option<(BString, BString)> {

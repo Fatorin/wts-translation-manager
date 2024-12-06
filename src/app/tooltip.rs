@@ -14,7 +14,7 @@ pub struct TooltipApp {
 impl TooltipApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_custom_fonts(&cc.egui_ctx);
-        let mut data = TooltipData::new();
+        let data = TooltipData::new();
         let status = String::new();
         let search_text = String::new();
         Self {
@@ -62,16 +62,18 @@ impl TooltipApp {
                 return;
             }
 
-            if self
+            match self
                 .data
-                .skill_manager
-                .source
-                .contains_key(&BString::from(self.search_text.as_str()))
+                .object_manager
+                .is_exist(&BString::from(self.search_text.as_str()))
             {
-                self.data.current_id = self.search_text.clone();
-                self.update_status(format!("已切換技能組至[{}]", self.search_text));
-            } else {
-                self.update_status("找不到技能ID");
+                true => {
+                    self.data.current_id = self.search_text.clone();
+                    self.update_status(format!("已切換技能組至[{}]", self.search_text));
+                }
+                false => {
+                    self.update_status("找不到技能ID");
+                }
             }
         }
     }
@@ -80,7 +82,7 @@ impl TooltipApp {
         egui::ComboBox::from_id_salt("skill_selector")
             .selected_text(&self.data.current_id)
             .show_ui(ui, |ui| {
-                for id in self.data.skill_manager.get_skill_ids() {
+                for id in self.data.object_manager.get_skill_ids() {
                     if ui
                         .selectable_value(
                             &mut self.data.current_id,
@@ -96,7 +98,7 @@ impl TooltipApp {
     }
 
     fn render_action_buttons(&mut self, ui: &mut egui::Ui) {
-        if ui.button("開啟檔案").clicked() {
+        if ui.button("開啟").clicked() {
             if let Some(path) = pick_war3_file() {
                 match self.data.import(&path) {
                     Ok(_) => {
@@ -111,49 +113,34 @@ impl TooltipApp {
             }
         }
 
-        if ui.button("匯出檔案").clicked() {
-            !todo!("");
-            /*
-            match export_translated_content(&self.data, SOURCE_FILE_NAME) {
-                Ok(_) => self.update_status("匯出成功"),
+        if ui.button("匯出").clicked() {
+            match self.data.export() {
+                Ok(e) => self.update_status(format!("匯出成功，匯出路徑: {}", e)),
                 Err(e) => self.update_status(format!("匯出失敗: {}", e)),
             }
-            */
         }
 
         if ui.button("儲存翻譯").clicked() {
-            !todo!("");
-            /*
-            match save_translation(&self.data, TRANSLATE_FILE_NAME) {
-                Ok(_) => self.update_status("存檔成功"),
-                Err(e) => self.update_status(format!("存檔失敗: {}", e)),
+            match self.data.export() {
+                Ok(e) => self.update_status(format!("儲存成功，儲存路徑:{}", e)),
+                Err(e) => self.update_status(format!("儲存失敗: {}", e)),
             }
-            */
         }
 
         if ui.button("新增/重置翻譯").clicked() {
-            if let Some(skill) = self
+            match self
                 .data
-                .skill_manager
-                .source
-                .get(&BString::from(self.data.current_id.to_string()))
-                .cloned()
+                .add_localized(&self.data.current_id)
             {
-                !todo!("");
-                /*
-                self.data
-                    .skill_manager
-                    .translation_skills
-                    .insert(self.data.current_id.clone(), skill);
-                */
-                self.update_status("已新增/重置翻譯當前技能的翻譯內容");
+                Ok(_) => self.update_status("已新增/重置翻譯當前技能的翻譯內容"),
+                Err(e) => self.update_status(format!("操作失敗：{}", e)),
             }
         }
     }
 
     fn render_scroll_area(&mut self, ui: &mut egui::Ui) {
-        let manager = &mut self.data.skill_manager;
-        if manager.original_count == 0 {
+        let manager = &mut self.data.object_manager;
+        if manager.is_empty() {
             egui::Frame::none().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(32.0);
