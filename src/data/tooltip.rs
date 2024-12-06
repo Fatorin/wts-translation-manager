@@ -81,14 +81,14 @@ impl TooltipData {
 
     pub fn export(&self, is_localized: bool) -> Result<String, String> {
         if self.object_manager.is_empty() {
-            return Err(String::from("尚未讀取檔案或是未有翻譯檔案"));
+            return Err(String::from("尚未讀取資料"));
         }
 
-        let table = self.object_manager.export(if is_localized {
-            &self.object_manager.localized
-        } else {
-            &self.object_manager.source
-        });
+        let table = self.object_manager.export(
+            &self.object_manager.source,
+            &self.object_manager.localized,
+            is_localized,
+        )?;
 
         let bytes = ObjectsTranslator::json_to_war(&self.object_manager.object_type, table)
             .map_err(|e| format!("Failed to import json-to-war: {}", e))?;
@@ -156,22 +156,42 @@ impl ObjectManager {
         Ok(())
     }
 
-    fn export(&self, source: &IndexMap<BString, Vec<Modification>>) -> ObjectModificationTable {
+    fn export(
+        &self,
+        source: &IndexMap<BString, Vec<Modification>>,
+        localized: &IndexMap<BString, Vec<Modification>>,
+        is_localized: bool,
+    ) -> Result<ObjectModificationTable, String> {
+        let target_data = if is_localized { localized } else { source };
+
+        if target_data.is_empty() {
+            return Err(String::from("輸出資料為空，請確認是否有寫入資料。"));
+        }
+
         let mut original = IndexMap::new();
         let mut custom = IndexMap::new();
 
-        for (key, source_data) in source {
-            if let Some(original_key) = self.mapping.get(key) {
-                custom.insert(
-                    BString::from(format!("{}:{}", original_key, key)),
-                    source_data.clone(),
-                );
+        for (key, data) in target_data {
+            let raw_key = if let Some(original_key) = self.mapping.get(key) {
+                BString::from(format!("{}:{}", key, original_key))
             } else {
-                original.insert(key.to_owned(), source_data.to_owned());
+                key.clone()
+            };
+
+            let modifications = if !is_localized {
+                localized.get(key).unwrap_or(data).to_owned()
+            } else {
+                data.to_owned()
+            };
+
+            if raw_key.contains(&b':') {
+                custom.insert(raw_key, modifications);
+            } else {
+                original.insert(raw_key, modifications);
             }
         }
 
-        ObjectModificationTable { original, custom }
+        Ok(ObjectModificationTable { original, custom })
     }
 
     fn add_localized(&mut self, id: &str) -> Result<(), String> {
