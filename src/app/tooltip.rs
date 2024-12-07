@@ -191,6 +191,10 @@ fn show_split_section(
     source_data: &mut Vec<String>,
     localized_data: &mut Vec<String>,
 ) {
+    if source_data.is_empty() {
+        return;
+    }
+
     ui.push_id(section_id, |ui| {
         let frame = egui::Frame::group(ui.style())
             .outer_margin(egui::Margin::ZERO)
@@ -220,22 +224,15 @@ fn render_split_columns(
         .num_columns(2)
         .spacing([20.0, 0.0])
         .show(ui, |ui| {
-            render_column(ui, "原文：", column_width, source_data, false);
-            render_column(ui, "翻譯：", column_width, localized_data, true);
+            render_column(ui, column_width, source_data, false);
+            render_column(ui, column_width, localized_data, true);
             ui.end_row();
         });
 }
 
-fn render_column(
-    ui: &mut egui::Ui,
-    label: &str,
-    width: f32,
-    items: &mut Vec<String>,
-    is_editable: bool,
-) {
+fn render_column(ui: &mut egui::Ui, width: f32, items: &mut Vec<String>, is_editable: bool) {
     ui.vertical(|ui| {
         ui.set_width(width);
-        ui.label(label);
         ui.add_space(4.0);
 
         for i in 0..items.len() {

@@ -12,5 +12,5 @@ pub fn is_available_skill_data(data: &SkillData) -> bool {
         &data.researchubertip,
         &data.tip,
         &data.ubertip,
-    ].iter().all(|desc| !desc.is_empty())
+    ].iter().any(|desc| !desc.is_empty())
 }
