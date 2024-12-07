@@ -40,6 +40,11 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
 
         // Parse section header [XXXX]
         if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            if !current_id.is_empty() && is_available_skill_data(&current_data) {
+                entries.insert(current_id.clone(), current_data);
+                current_data = SkillData::default();
+            }
+
             current_id = trimmed[1..trimmed.len() - 1].to_string();
             current_data.id = current_id.clone();
             continue;
@@ -72,11 +77,10 @@ fn parse_content(content: &str) -> HashMap<String, SkillData> {
                 _ => {}
             }
         }
+    }
 
-        if is_available_skill_data(&current_data) {
-            entries.insert(current_id.clone(), current_data);
-            current_data = SkillData::default();
-        }
+    if !current_id.is_empty() && is_available_skill_data(&current_data) {
+        entries.insert(current_id.clone(), current_data);
     }
 
     entries
@@ -98,16 +102,23 @@ where
     I: Iterator<Item = &'a str>,
 {
     let mut content = String::new();
-    let mut first_line = true;
 
     while let Some(line) = lines.next() {
         let trimmed = line.trim();
 
-        if first_line {
-            first_line = false;
+        // 檢查是否包含開始標記 [=[
+        if trimmed.contains("[=[") {
+            // 獲取 [=[ 後的內容
+            if let Some(remaining) = trimmed.split("[=[").nth(1) {
+                if !remaining.is_empty() {
+                    content.push_str(remaining);
+                    content.push('\n');
+                }
+            }
             continue;
         }
 
+        // 檢查結束標記
         if trimmed.ends_with("]=]") {
             content.push_str(trimmed.trim_end_matches("]=]"));
             break;
