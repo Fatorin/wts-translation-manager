@@ -1,5 +1,5 @@
 use crate::data::tooltip::TooltipData;
-use crate::types::{Modification, ObjectType};
+use crate::types::{Modification, ModificationValue, ObjectType};
 use crate::ui::fonts::setup_custom_fonts;
 use bstr::BString;
 use eframe::egui;
@@ -205,39 +205,72 @@ fn render_split_columns(
 ) {
     let column_width = (ui.available_width() - 20.0) / 2.0;
 
-    egui::Grid::new("split_content")
-        .num_columns(2)
-        .spacing([20.0, 0.0])
-        .show(ui, |ui| {
-            render_column(ui, column_width, Some(source_data), false);
-            render_column(ui, column_width, localized_data, true);
-            ui.end_row();
-        });
+    let mut m_id = BString::default();
+
+    for m in source_data {
+        if m_id != m.id {
+            ui.heading(m.id.to_string());
+            ui.separator();
+            ui.add_space(4.0); // 加一點間距
+            m_id = m.id.clone();
+        }
+
+        egui::Grid::new(format!("split_section_{}_{}", m.id, m.level))
+            .num_columns(2)
+            .spacing([20.0, 0.0])
+            .show(ui, |ui| {
+                render_column(
+                    ui,
+                    format!("column_source_{}_{}", m.id, m.level),
+                    column_width,
+                    Some(m),
+                    false,
+                );
+                render_column(
+                    ui,
+                    format!("column_localized_{}_{}", m.id, m.level),
+                    column_width,
+                    None,
+                    true,
+                );
+                ui.end_row();
+            });
+    }
+
+    if m_id.is_empty() {
+        ui.add_space(32.0);
+        ui.label("無文字資料，請選擇別的技能");
+        ui.add_space(32.0);
+    }
 }
 
 fn render_column(
     ui: &mut egui::Ui,
+    id: String,
     width: f32,
-    item: Option<&mut Vec<Modification>>,
+    item: Option<&mut Modification>,
     is_editable: bool,
 ) {
-    ui.vertical(|ui| {
-        ui.set_width(width);
+    ui.push_id(id, |ui| {
+        ui.vertical(|ui| {
+            ui.set_width(width);
+            if let Some(data) = item {
+                if let ModificationValue::String(text) = &data.value {
+                    let mut temp = text.to_string();
+                    let text_edit = egui::TextEdit::multiline(&mut temp)
+                        .desired_width(ui.available_width())
+                        .frame(true)
+                        .interactive(is_editable);
 
-        if let Some(data) = item {
-            let mut temp = "1234";
-            let text_edit = egui::TextEdit::multiline(&mut temp)
-                .desired_width(ui.available_width())
-                .frame(true)
-                .interactive(is_editable);
-
-            egui::Frame::none()
-                .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
-                .rounding(egui::Rounding::same(2.0))
-                .show(ui, |ui| {
-                    ui.add(text_edit);
-                });
-        }
+                    egui::Frame::none()
+                        .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
+                        .rounding(egui::Rounding::same(2.0))
+                        .show(ui, |ui| {
+                            ui.add(text_edit);
+                        });
+                }
+            }
+        })
     });
 }
 
