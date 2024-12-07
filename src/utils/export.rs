@@ -50,9 +50,20 @@ impl<'a> ContentProcessor<'a> {
         field_name: &str,
         lines: &mut std::iter::Peekable<std::str::Lines>,
     ) {
-        let original_content: Vec<_> = lines
-            .take_while(|line| !line.trim().ends_with("]=]"))
-            .collect();
+        let mut original_content = Vec::new();
+
+        // 收集所有內容直到遇到 ]=]
+        while let Some(line) = lines.next() {
+            if line.trim().ends_with("]=]") {
+                // 保存最後一行，但移除 ]=]
+                let last_line = line.trim_end_matches("]=]");
+                if !last_line.is_empty() {
+                    original_content.push(last_line.to_string());
+                }
+                break;
+            }
+            original_content.push(line.to_string());
+        }
 
         let content = if let Some(translation) =
             get_translation(self.tooltip_data, &self.current_id, field_name, 0)
