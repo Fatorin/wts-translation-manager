@@ -231,6 +231,8 @@ fn render_split_columns(
 }
 
 fn render_column(ui: &mut egui::Ui, width: f32, items: &mut Vec<String>, is_editable: bool) {
+    let is_ime_active = ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Ime(_))));
+
     ui.vertical(|ui| {
         ui.set_width(width);
         ui.add_space(4.0);
@@ -243,13 +245,13 @@ fn render_column(ui: &mut egui::Ui, width: f32, items: &mut Vec<String>, is_edit
                 .frame(true)
                 .interactive(is_editable);
 
-            let response = egui::Frame::none()
-                .stroke(egui::Stroke::new(1.0, egui::Color32::GRAY))
-                .rounding(egui::Rounding::same(2.0))
-                .show(ui, |ui| ui.add(text_edit));
-
-            if response.inner.changed() {
-                items[i] = item;
+            let response = ui.add(text_edit);
+            if response.changed() {
+                let should_update =
+                    !is_ime_active || !ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if should_update {
+                    items[i] = item;
+                }
             }
         }
     });
