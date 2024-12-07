@@ -142,10 +142,18 @@ where
         if trimmed == "}" {
             break;
         }
-        if trimmed.starts_with('"') && trimmed.contains(',') {
+
+        // 處理空字符串的情況
+        if trimmed == "\"\","  || trimmed == "\"\"," {
+            result.push(String::new());
+            continue;
+        }
+
+        // 處理一般字符串
+        if trimmed.starts_with('"') {
             let content = trimmed
-                .trim_start_matches('"') // 移除開頭的引號
-                .trim_end_matches("\",") // 移除結尾的引號和逗號
+                .trim_start_matches('"')
+                .trim_end_matches("\",")
                 .to_string();
             result.push(content);
         }
