@@ -154,23 +154,44 @@ where
     while let Some(line) = lines.next() {
         let trimmed = line.trim();
 
+        // Handle end of table
         if trimmed == "}" {
             break;
         }
 
+        // Start of a new multi-line string
         if trimmed.starts_with("[=[") {
             in_multiline = true;
             current_string.clear();
+            // Capture any content after [=[ on the same line
+            if let Some(content) = trimmed.strip_prefix("[=[") {
+                if !content.is_empty() {
+                    current_string.push_str(content);
+                    current_string.push('\n');
+                }
+            }
             continue;
         }
 
         if in_multiline {
+            // Check for end of multi-line string
             if trimmed.ends_with("]=],") || trimmed.ends_with("]=]") {
-                current_string.push_str(trimmed.trim_end_matches("]=],").trim_end_matches("]=]"));
-                result.push(current_string.trim().to_string());
+                let content = if trimmed.ends_with("]=],") {
+                    trimmed.strip_suffix("]=],").unwrap()
+                } else {
+                    trimmed.strip_suffix("]=]").unwrap()
+                };
+
+                if !content.is_empty() {
+                    current_string.push_str(content);
+                }
+
+                // Add the completed string to results
+                result.push(current_string.clone());
                 current_string.clear();
                 in_multiline = false;
             } else {
+                // Add the line with proper line ending
                 current_string.push_str(line);
                 current_string.push('\n');
             }
