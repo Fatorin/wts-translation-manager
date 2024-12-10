@@ -1,8 +1,9 @@
-use std::iter::Peekable;
 use crate::data::tooltip::SkillData;
 use regex::Regex;
+use std::iter::Peekable;
 
 pub const SOURCE_FILE_NAME: &str = "source.ini";
+pub const EXPORT_FILE_NAME: &str = "source_new.ini";
 pub const TRANSLATE_FILE_NAME: &str = "translation.ini";
 pub const PARSE_ID_REGEX: &str = r#"^\[([a-zA-Z0-9]{4}|[a-zA-Z0-9]{3}@)\]$"#;
 pub const EXPORT_ID_REGEX: &str = r#"^([a-zA-Z0-9]{4})|([a-zA-Z0-9]{3}@)$"#;
@@ -68,6 +69,19 @@ pub enum TextType {
     SingleLineArrayExt,
     MultiLineArray,
     MultiLineArrayExt,
+}
+
+pub fn get_id(key: &str) -> Option<String> {
+    let pattern = Regex::new(PARSE_ID_REGEX).unwrap();
+    if let Some(caps) = pattern.captures(key) {
+        if caps.get(1).is_some() {
+            return Some(caps.get(1).unwrap().as_str().to_string());
+        }
+        if caps.get(2).is_some() {
+            return Some(caps.get(2).unwrap().as_str().to_string());
+        }
+    }
+    None
 }
 
 pub fn get_field_type(line: &str) -> Option<FieldType> {
@@ -153,6 +167,48 @@ fn get_parse_type_from_multi(input: &str) -> Option<TextType> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_no_quotes_pattern() {
+        // 有效的案例 - 不帶引號
+        assert_eq!(get_id("[A123]"), Some("A1234".to_string()));
+        assert_eq!(get_id("[ABCD]"), Some("ABCD".to_string()));
+        assert_eq!(get_id("[A1B2]"), Some("A1B2".to_string()));
+        assert_eq!(get_id("[a123]"), Some("a123".to_string()));
+        assert_eq!(get_id("[1ABC]"), Some("1ABC".to_string()));
+
+        // 無效的案例 - 不帶引號
+        assert_eq!(get_id("[ABC]"), None);
+        assert_eq!(get_id("[ABCDE]"), None);
+        assert_eq!(get_id("[A@BC]"), None);
+        assert_eq!(get_id("[ABC@]"), None);
+    }
+
+    #[test]
+    fn test_quoted_pattern() {
+        // 有效的案例 - 帶引號
+        assert_eq!(get_id("[\"ABC@\"]"), Some("ABC@".to_string()));
+        assert_eq!(get_id("[\"123@\"]"), Some("123@".to_string()));
+        assert_eq!(get_id("[\"A2B@\"]"), Some("A2B@".to_string()));
+        assert_eq!(get_id("[\"aBC@\"]"), Some("aBC@".to_string()));
+
+        // 無效的案例 - 帶引號
+        assert_eq!(get_id("[\"AB@\"]"), None);
+        assert_eq!(get_id("[\"ABCD@\"]"), None);
+        assert_eq!(get_id("[\"ABC#\"]"), None);
+        assert_eq!(get_id("[\"ABC\"]"), None);
+    }
+
+    #[test]
+    fn test_invalid_formats() {
+        // 格式錯誤的案例
+        assert_eq!(get_id("A123"), None);
+        assert_eq!(get_id("[A123"), None);
+        assert_eq!(get_id("A123]"), None);
+        assert_eq!(get_id("[\"A123]"), None);
+        assert_eq!(get_id("[A123\"]"), None);
+        assert_eq!(get_id(""), None);
+    }
 
     #[test]
     fn test_get_parse_type_from_single() {

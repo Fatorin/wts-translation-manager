@@ -3,9 +3,83 @@ use crate::utils::common::*;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs;
+use std::iter::Peekable;
 
 pub fn export_files(data: &TooltipData) -> Result<(), String> {
-    !todo!();
+    let output = output_files(&data.skill_manager.translation_skills)?;
+    fs::write(EXPORT_FILE_NAME, output).expect("Unable to write file");
+    Ok(())
+}
+
+pub fn output_files(skills: &BTreeMap<String, SkillData>) -> Result<String, String> {
+    let content = fs::read_to_string(SOURCE_FILE_NAME).expect("Unable to read file");
+    let mut lines = content.lines().peekable();
+    let mut current_id = String::new();
+    let mut output = String::new();
+
+    while let Some(line) = lines.next() {
+        if let Some(id) = get_id(line) {
+            current_id = id;
+        }
+
+        if let Some(field_type) = get_field_type(line) {
+            if let Some(data) = skills.get(&current_id) {
+                if let Some(text_type) = data.text_type_map.get(&field_type) {
+                    skip_lines(text_type, &mut lines);
+                    let field_value = get_field_value(&field_type, text_type, data)?;
+                    output.push_line(&field_value);
+                }
+            } else {
+                output.push_line(line);
+            }
+        } else {
+            output.push_line(line);
+        }
+    }
+
+    Ok(output)
+}
+
+fn skip_lines<'a, I>(text_type: &TextType, lines: &mut Peekable<I>)
+where
+    I: Iterator<Item = &'a str>,
+{
+    match text_type {
+        TextType::SingleLine => {}
+        TextType::MultiLine => {
+            while let Some(line) = lines.next() {
+                if line.ends_with("]=]") {
+                    break;
+                }
+            }
+        }
+        TextType::SingleLineArray
+        | TextType::SingleLineArrayExt
+        | TextType::MultiLineArray
+        | TextType::MultiLineArrayExt => {
+            while let Some(line) = lines.next() {
+                if line.contains("}") {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn get_field_value(
+    field_type: &FieldType,
+    text_type: &TextType,
+    data: &SkillData,
+) -> Result<String, String> {
+    let field_value = match field_type {
+        FieldType::Researchtip => output_field_value(&field_type, text_type, &data.researchtip),
+        FieldType::Researchubertip => {
+            output_field_value(&field_type, text_type, &data.researchubertip)
+        }
+        FieldType::Tip => output_field_value(&field_type, text_type, &data.tip),
+        FieldType::Ubertip => output_field_value(&field_type, text_type, &data.ubertip),
+    }?;
+    Ok(field_value)
 }
 
 pub fn export_translated(data: &TooltipData) -> Result<(), String> {

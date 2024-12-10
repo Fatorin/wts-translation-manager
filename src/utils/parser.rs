@@ -65,19 +65,6 @@ pub fn parse_content(content: &str) -> BTreeMap<String, SkillData> {
     entries
 }
 
-fn get_id(key: &str) -> Option<String> {
-    let pattern = Regex::new(PARSE_ID_REGEX).unwrap();
-    if let Some(caps) = pattern.captures(key) {
-        if caps.get(1).is_some() {
-            return Some(caps.get(1).unwrap().as_str().to_string());
-        }
-        if caps.get(2).is_some() {
-            return Some(caps.get(2).unwrap().as_str().to_string());
-        }
-    }
-    None
-}
-
 fn handle_single_line(str: &str) -> Vec<String> {
     let mut result = String::new();
     if let Some(v) = extract_value_from_regex(SINGLE_LINE_REGEX, str) {
@@ -92,10 +79,6 @@ where
 {
     let mut result = String::new();
     while let Some(line) = lines.next() {
-        // if line.ends_with("[=[") {
-        //     continue;
-        // }
-
         if line.ends_with("]=]") {
             result.push_str(line.strip_suffix("]=]").unwrap_or(line));
             break;
@@ -199,48 +182,6 @@ fn handle_newline(line: &str, current_block: &mut String, end_marker: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_no_quotes_pattern() {
-        // 有效的案例 - 不帶引號
-        assert_eq!(get_id("[A123]"), Some("A1234".to_string()));
-        assert_eq!(get_id("[ABCD]"), Some("ABCD".to_string()));
-        assert_eq!(get_id("[A1B2]"), Some("A1B2".to_string()));
-        assert_eq!(get_id("[a123]"), Some("a123".to_string()));
-        assert_eq!(get_id("[1ABC]"), Some("1ABC".to_string()));
-
-        // 無效的案例 - 不帶引號
-        assert_eq!(get_id("[ABC]"), None);
-        assert_eq!(get_id("[ABCDE]"), None);
-        assert_eq!(get_id("[A@BC]"), None);
-        assert_eq!(get_id("[ABC@]"), None);
-    }
-
-    #[test]
-    fn test_quoted_pattern() {
-        // 有效的案例 - 帶引號
-        assert_eq!(get_id("[\"ABC@\"]"), Some("ABC@".to_string()));
-        assert_eq!(get_id("[\"123@\"]"), Some("123@".to_string()));
-        assert_eq!(get_id("[\"A2B@\"]"), Some("A2B@".to_string()));
-        assert_eq!(get_id("[\"aBC@\"]"), Some("aBC@".to_string()));
-
-        // 無效的案例 - 帶引號
-        assert_eq!(get_id("[\"AB@\"]"), None);
-        assert_eq!(get_id("[\"ABCD@\"]"), None);
-        assert_eq!(get_id("[\"ABC#\"]"), None);
-        assert_eq!(get_id("[\"ABC\"]"), None);
-    }
-
-    #[test]
-    fn test_invalid_formats() {
-        // 格式錯誤的案例
-        assert_eq!(get_id("A123"), None);
-        assert_eq!(get_id("[A123"), None);
-        assert_eq!(get_id("A123]"), None);
-        assert_eq!(get_id("[\"A123]"), None);
-        assert_eq!(get_id("[A123\"]"), None);
-        assert_eq!(get_id(""), None);
-    }
 
     #[test]
     fn test_handle_single_line() {
