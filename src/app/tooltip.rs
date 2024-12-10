@@ -1,12 +1,9 @@
 use crate::data::tooltip::{SkillData, SkillManager, TooltipData};
 use crate::ui::fonts::setup_custom_fonts;
-use crate::utils::common::{RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP};
-use crate::utils::export::{export_translated_content, save_translation};
+use crate::utils::common::FieldType;
+use crate::utils::export::{export_files, export_translated};
 use crate::utils::parser;
 use eframe::egui;
-
-const SOURCE_FILE_NAME: &str = "source.ini";
-const TRANSLATE_FILE_NAME: &str = "translation.ini";
 
 pub struct TooltipApp {
     data: TooltipData,
@@ -17,7 +14,7 @@ pub struct TooltipApp {
 impl TooltipApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         setup_custom_fonts(&cc.egui_ctx);
-        let data = parser::parse_tooltip_files(SOURCE_FILE_NAME, TRANSLATE_FILE_NAME);
+        let data = parser::parse_tooltip_files();
         let status = String::new();
         let search_text = String::new();
         Self {
@@ -100,14 +97,14 @@ impl TooltipApp {
 
     fn render_action_buttons(&mut self, ui: &mut egui::Ui) {
         if ui.button("資料匯出").clicked() {
-            match export_translated_content(&self.data, SOURCE_FILE_NAME) {
+            match export_files(&self.data) {
                 Ok(_) => self.update_status("匯出成功"),
                 Err(e) => self.update_status(format!("匯出失敗: {}", e)),
             }
         }
 
         if ui.button("存檔翻譯").clicked() {
-            match save_translation(&self.data, TRANSLATE_FILE_NAME) {
+            match export_translated(&self.data) {
                 Ok(_) => self.update_status("存檔成功"),
                 Err(e) => self.update_status(format!("存檔失敗: {}", e)),
             }
@@ -157,22 +154,28 @@ fn render_skill_sections(ui: &mut egui::Ui, manager: &mut SkillManager, id: &str
         ui.spacing_mut().item_spacing.y = 16.0;
         show_split_section(
             ui,
-            RESEARCHTIP,
+            FieldType::Researchtip,
             "researchtip_section",
             &mut data.researchtip,
             &mut localized.researchtip,
         );
         show_split_section(
             ui,
-            RESEARCHUBERTIP,
+            FieldType::Researchubertip,
             "researchubertip_section",
             &mut data.researchubertip,
             &mut localized.researchubertip,
         );
-        show_split_section(ui, TIP, "tip_section", &mut data.tip, &mut localized.tip);
         show_split_section(
             ui,
-            UBERTIP,
+            FieldType::Tip,
+            "tip_section",
+            &mut data.tip,
+            &mut localized.tip,
+        );
+        show_split_section(
+            ui,
+            FieldType::Ubertip,
             "ubertip_section",
             &mut data.ubertip,
             &mut localized.ubertip,
@@ -186,7 +189,7 @@ fn render_skill_sections(ui: &mut egui::Ui, manager: &mut SkillManager, id: &str
 
 fn show_split_section(
     ui: &mut egui::Ui,
-    title: &str,
+    field_type: FieldType,
     section_id: &str,
     source_data: &mut Vec<String>,
     localized_data: &mut Vec<String>,
@@ -204,7 +207,7 @@ fn show_split_section(
 
         frame.show(ui, |ui| {
             ui.vertical(|ui| {
-                ui.heading(title);
+                ui.heading(field_type.to_str());
                 ui.separator();
                 ui.add_space(4.0);
                 render_split_columns(ui, source_data, localized_data);

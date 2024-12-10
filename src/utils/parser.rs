@@ -1,30 +1,21 @@
 use crate::data::tooltip::{SkillData, TooltipData};
-use crate::utils::common::{
-    get_field_name, is_available_skill_data, ParseType, RESEARCHTIP, RESEARCHUBERTIP, TIP, UBERTIP,
-};
+use crate::utils::common::*;
+use eframe::egui::TextBuffer;
 use regex::Regex;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::iter::Peekable;
 
-const SINGLE_LINE_REGEX: &str = r#"^[A-Za-z]+\s*=\s*"(.*)"$"#;
-const SINGLE_LINE_ARRAY_REGEX: &str = r#"^"(.*)",$"#;
-const SINGLE_LINE_ARRAY_EXT_REGEX: &str = r#"^\d+\s*=\s*"(.*)",$"#;
-const MULTI_LINE_ARRAY_EXT_REGEX: &str = r#"^\d+\s*=\s*\[=\[$"#;
-const MULTI_LINE_NEWLINE_SYMBOL: &str = "]=],";
-const NEWLINE_SYMBOL: char = '\n';
-
-pub fn parse_tooltip_files(tooltip_filename: &str, translation_filename: &str) -> TooltipData {
+pub fn parse_tooltip_files() -> TooltipData {
     let mut data = TooltipData::default();
 
-    // Parse main tooltip file
-    let tooltip_content =
-        fs::read_to_string(tooltip_filename).expect("Failed to read tooltip file");
-    data.skill_manager.skills = parse_content(&tooltip_content);
+    // Parse source file
+    let source_content = fs::read_to_string(SOURCE_FILE_NAME).expect("Failed to read source file");
+    data.skill_manager.skills = parse_content(&source_content);
 
     // Parse translation file
     let translation_content =
-        fs::read_to_string(translation_filename).expect("Failed to read translation file");
+        fs::read_to_string(TRANSLATE_FILE_NAME).expect("Failed to read translation file");
     data.skill_manager.translation_skills = parse_content(&translation_content);
 
     // Set first skill ID as current if any exists
@@ -35,39 +26,34 @@ pub fn parse_tooltip_files(tooltip_filename: &str, translation_filename: &str) -
     data
 }
 
-pub fn parse_content(content: &str) -> HashMap<String, SkillData> {
-    let mut entries = HashMap::new();
+pub fn parse_content(content: &str) -> BTreeMap<String, SkillData> {
+    let mut entries = BTreeMap::new();
     let mut current_id = String::new();
     let mut current_data = SkillData::default();
-    let multiple_pattern = Regex::new(r#"^.*\s*=\s*\{$"#).unwrap();
 
     let mut lines = content.lines().peekable();
     while let Some(line) = lines.next() {
-        if is_valid_id(line) {
+        if let Some(id) = get_id(line) {
             if is_available_skill_data(&current_data) {
                 entries.insert(current_id, current_data);
                 current_data = SkillData::default();
             }
 
-            current_id = line.to_string();
+            current_id = id;
             current_data.id = current_id.clone();
         }
 
-        if let Some(field_name) = get_field_name(line) {
-            let parse_type = match multiple_pattern.is_match(line) {
-                true => get_parse_type_from_multi(lines.next().unwrap_or("")),
-                false => get_parse_type_from_single(line),
-            };
-
-            if let Some(parse_type) = parse_type {
-                let field_value = get_field_value(parse_type, &mut lines);
-                match field_name {
-                    RESEARCHTIP => current_data.researchtip = field_value,
-                    RESEARCHUBERTIP => current_data.researchubertip = field_value,
-                    TIP => current_data.tip = field_value,
-                    UBERTIP => current_data.ubertip = field_value,
-                    _ => {}
-                }
+        if let Some(field_type) = get_field_type(line) {
+            if let Some(text_type) = get_text_type(line, &mut lines) {
+                let field_value = match text_type {
+                    TextType::SingleLine => handle_single_line(line),
+                    TextType::MultiLine => handle_multi_line(&mut lines),
+                    TextType::SingleLineArray => handle_single_line_array(&mut lines),
+                    TextType::SingleLineArrayExt => handle_single_line_array_ext(&mut lines),
+                    TextType::MultiLineArray => handle_multi_line_array(&mut lines),
+                    TextType::MultiLineArrayExt => handle_multi_line_array_ext(&mut lines),
+                };
+                current_data.insert_data(text_type, field_type, field_value);
             };
         }
     }
@@ -79,80 +65,25 @@ pub fn parse_content(content: &str) -> HashMap<String, SkillData> {
     entries
 }
 
-fn is_valid_id(input: &str) -> bool {
-    let pattern = Regex::new(r#"^\[(?:[a-zA-Z0-9]{4}|"[a-zA-Z0-9]{3}@")]$"#).unwrap();
-    pattern.is_match(input)
-}
-
-fn get_parse_type_from_single(input: &str) -> Option<ParseType> {
-    // SingleLine
-    let single_pattern = Regex::new(SINGLE_LINE_REGEX).unwrap();
-    if single_pattern.is_match(input) {
-        return Some(ParseType::SingleLine);
-    }
-
-    // MultiLine
-    let multi_pattern = Regex::new(r#"^[A-Za-z]+\s*=\s*\[=\[$"#).unwrap();
-    if multi_pattern.is_match(input) {
-        return Some(ParseType::MultiLine);
-    }
-
-    None
-}
-fn get_parse_type_from_multi(input: &str) -> Option<ParseType> {
-    // 多列單行
-    let pattern = Regex::new(SINGLE_LINE_ARRAY_REGEX).unwrap();
-    if pattern.is_match(input) {
-        return Some(ParseType::SingleLineArray);
-    }
-
-    // 超多列單行
-    let pattern = Regex::new(SINGLE_LINE_ARRAY_EXT_REGEX).unwrap();
-    if pattern.is_match(input) {
-        return Some(ParseType::SingleLineArrayExt);
-    }
-
-    // 多列多行
-    let pattern = Regex::new(r#"^\[=\[$"#).unwrap();
-    if pattern.is_match(input) {
-        return Some(ParseType::MultiLineArray);
-    }
-
-    // 超多列多行
-    let pattern = Regex::new(MULTI_LINE_ARRAY_EXT_REGEX).unwrap();
-    if pattern.is_match(input) {
-        return Some(ParseType::MultiLineArrayExt);
-    }
-
-    None
-}
-
-fn get_field_value<'a, I>(parse_type: ParseType, lines: &mut Peekable<I>) -> Vec<String>
-where
-    I: Iterator<Item = &'a str>,
-{
-    match parse_type {
-        ParseType::SingleLine => handle_single_line(lines),
-        ParseType::MultiLine => handle_multi_line(lines),
-        ParseType::SingleLineArray => handle_single_line_array(lines),
-        ParseType::SingleLineArrayExt => handle_single_line_array_ext(lines),
-        ParseType::MultiLineArray => handle_multi_line_array(lines),
-        ParseType::MultiLineArrayExt => handle_multi_line_array_ext(lines),
-    }
-}
-
-fn handle_single_line<'a, I>(lines: &mut Peekable<I>) -> Vec<String>
-where
-    I: Iterator<Item = &'a str>,
-{
-    let mut result = vec![];
-    if let Some(str) = lines.peek() {
-        if let Some(value) = extract_value_from_regex(SINGLE_LINE_REGEX, str) {
-            result.push(value);
+fn get_id(key: &str) -> Option<String> {
+    let pattern = Regex::new(PARSE_ID_REGEX).unwrap();
+    if let Some(caps) = pattern.captures(key) {
+        if caps.get(1).is_some() {
+            return Some(caps.get(1).unwrap().as_str().to_string());
+        }
+        if caps.get(2).is_some() {
+            return Some(caps.get(2).unwrap().as_str().to_string());
         }
     }
+    None
+}
 
-    result
+fn handle_single_line(str: &str) -> Vec<String> {
+    let mut result = String::new();
+    if let Some(v) = extract_value_from_regex(SINGLE_LINE_REGEX, str) {
+        result.push_str(v.as_str());
+    }
+    vec![result]
 }
 
 fn handle_multi_line<'a, I>(lines: &mut Peekable<I>) -> Vec<String>
@@ -161,6 +92,10 @@ where
 {
     let mut result = String::new();
     while let Some(line) = lines.next() {
+        // if line.ends_with("[=[") {
+        //     continue;
+        // }
+
         if line.ends_with("]=]") {
             result.push_str(line.strip_suffix("]=]").unwrap_or(line));
             break;
@@ -176,36 +111,20 @@ fn handle_single_line_array<'a, I>(lines: &mut Peekable<I>) -> Vec<String>
 where
     I: Iterator<Item = &'a str>,
 {
-    let mut result = vec![];
-    while let Some(line) = lines.next() {
-        if line == "}" {
-            break;
-        }
-
-        if let Some(trim_str) = line.strip_prefix("\"").and_then(|s| s.strip_suffix("\",")) {
-            result.push(trim_str.to_string());
-        }
-    }
-
-    result
+    lines
+        .take_while(|line| line.as_str() != "}")
+        .filter_map(|line| extract_value_from_regex(SINGLE_LINE_ARRAY_REGEX, &line))
+        .collect()
 }
 
 fn handle_single_line_array_ext<'a, I>(lines: &mut Peekable<I>) -> Vec<String>
 where
     I: Iterator<Item = &'a str>,
 {
-    let mut result = vec![];
-    while let Some(line) = lines.next() {
-        if line == "}" {
-            break;
-        }
-
-        if let Some(value) = extract_value_from_regex(SINGLE_LINE_ARRAY_EXT_REGEX, line) {
-            result.push(value);
-        }
-    }
-
-    result
+    lines
+        .take_while(|line| line.as_str() != "}")
+        .filter_map(|line| extract_value_from_regex(SINGLE_LINE_ARRAY_EXT_REGEX, &line))
+        .collect()
 }
 
 fn handle_multi_line_array<'a, I>(lines: &mut Peekable<I>) -> Vec<String>
@@ -214,6 +133,7 @@ where
 {
     let mut result = vec![];
     let mut current_block = String::new();
+
     while let Some(line) = lines.next() {
         match line {
             "}" => {
@@ -279,108 +199,53 @@ fn handle_newline(line: &str, current_block: &mut String, end_marker: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn parse_file() {}
 
     #[test]
     fn test_no_quotes_pattern() {
         // 有效的案例 - 不帶引號
-        assert!(is_valid_id("[A123]"), "應該接受 [A123]");
-        assert!(is_valid_id("[1234]"), "應該接受 [1234]");
-        assert!(is_valid_id("[ABCD]"), "應該接受 [ABCD]");
-        assert!(is_valid_id("[A1B2]"), "應該接受 [A1B2]");
-        assert!(is_valid_id("[a123]"), "應該接受小寫字母 [a123]");
-        assert!(is_valid_id("[1ABC]"), "應該接受數字開頭 [1ABC]");
+        assert_eq!(get_id("[A123]"), Some("A1234".to_string()));
+        assert_eq!(get_id("[ABCD]"), Some("ABCD".to_string()));
+        assert_eq!(get_id("[A1B2]"), Some("A1B2".to_string()));
+        assert_eq!(get_id("[a123]"), Some("a123".to_string()));
+        assert_eq!(get_id("[1ABC]"), Some("1ABC".to_string()));
 
         // 無效的案例 - 不帶引號
-        assert!(!is_valid_id("[ABC]"), "不應接受少於4個字符");
-        assert!(!is_valid_id("[ABCDE]"), "不應接受超過4個字符");
-        assert!(!is_valid_id("[A@BC]"), "不應接受特殊符號");
-        assert!(!is_valid_id("[ABC@]"), "不應接受特殊符號");
+        assert_eq!(get_id("[ABC]"), None);
+        assert_eq!(get_id("[ABCDE]"), None);
+        assert_eq!(get_id("[A@BC]"), None);
+        assert_eq!(get_id("[ABC@]"), None);
     }
 
     #[test]
     fn test_quoted_pattern() {
         // 有效的案例 - 帶引號
-        assert!(is_valid_id("[\"ABC@\"]"), "應該接受 [\"ABC@\"]");
-        assert!(is_valid_id("[\"123@\"]"), "應該接受 [\"123@\"]");
-        assert!(is_valid_id("[\"A2B@\"]"), "應該接受 [\"A2B@\"]");
-        assert!(is_valid_id("[\"aBC@\"]"), "應該接受小寫字母 [\"aBC@\"]");
+        assert_eq!(get_id("[\"ABC@\"]"), Some("ABC@".to_string()));
+        assert_eq!(get_id("[\"123@\"]"), Some("123@".to_string()));
+        assert_eq!(get_id("[\"A2B@\"]"), Some("A2B@".to_string()));
+        assert_eq!(get_id("[\"aBC@\"]"), Some("aBC@".to_string()));
 
         // 無效的案例 - 帶引號
-        assert!(!is_valid_id("[\"AB@\"]"), "不應接受少於3個字符加@");
-        assert!(!is_valid_id("[\"ABCD@\"]"), "不應接受超過3個字符加@");
-        assert!(!is_valid_id("[\"ABC#\"]"), "不應接受@以外的特殊符號");
-        assert!(!is_valid_id("[\"ABC\"]"), "不應接受沒有@的字符串");
+        assert_eq!(get_id("[\"AB@\"]"), None);
+        assert_eq!(get_id("[\"ABCD@\"]"), None);
+        assert_eq!(get_id("[\"ABC#\"]"), None);
+        assert_eq!(get_id("[\"ABC\"]"), None);
     }
 
     #[test]
     fn test_invalid_formats() {
         // 格式錯誤的案例
-        assert!(!is_valid_id("A123"), "不應接受沒有方括號的字符串");
-        assert!(!is_valid_id("[A123"), "不應接受缺少結束方括號的字符串");
-        assert!(!is_valid_id("A123]"), "不應接受缺少開始方括號的字符串");
-        assert!(!is_valid_id("[\"A123]"), "不應接受引號不匹配的字符串");
-        assert!(!is_valid_id("[A123\"]"), "不應接受引號不匹配的字符串");
-        assert!(!is_valid_id(""), "不應接受空字符串");
-    }
-
-    #[test]
-    fn test_get_parse_type_from_single() {
-        assert_eq!(
-            get_parse_type_from_single(r#"Tip = "TEST|cffffcc00(Q)|r ""#),
-            Some(ParseType::SingleLine)
-        );
-        assert_eq!(
-            get_parse_type_from_single(r#"123 = "TEST|cffffcc00(Q)|r ""#),
-            None
-        );
-        assert_eq!(
-            get_parse_type_from_single("Researchubertip = [=["),
-            Some(ParseType::MultiLine)
-        );
-        assert_eq!(
-            get_parse_type_from_single("Tip = [=["),
-            Some(ParseType::MultiLine)
-        );
-        assert_eq!(get_parse_type_from_single("Tip = {"), None);
-        assert_eq!(get_parse_type_from_single("123 = [=["), None);
-    }
-
-    #[test]
-    fn test_get_parse_type_from_multi() {
-        assert_eq!(
-            get_parse_type_from_multi(r#""|c00ffff80TEST|cffffcc00(A)|r","#),
-            Some(ParseType::SingleLineArray)
-        );
-
-        assert_eq!(
-            get_parse_type_from_multi(r#""|c00ffff80TEST|cffffcc00(A)|r""#),
-            None
-        );
-
-        assert_eq!(
-            get_parse_type_from_multi(r#""|c00ffff80TEST|cffffcc00(A)|r"#),
-            None
-        );
-
-        assert_eq!(
-            get_parse_type_from_multi(r#"99 = "some text","#),
-            Some(ParseType::SingleLineArrayExt)
-        );
-        assert_eq!(get_parse_type_from_multi(r#"9999 = "some text""#), None);
-
-        assert_eq!(
-            get_parse_type_from_multi(r#"1 = [=["#),
-            Some(ParseType::MultiLineArrayExt)
-        );
+        assert_eq!(get_id("A123"), None);
+        assert_eq!(get_id("[A123"), None);
+        assert_eq!(get_id("A123]"), None);
+        assert_eq!(get_id("[\"A123]"), None);
+        assert_eq!(get_id("[A123\"]"), None);
+        assert_eq!(get_id(""), None);
     }
 
     #[test]
     fn test_handle_single_line() {
         let content = r#"Tip = "마력 전달과 흡수|cffffcc00(Q)|r ""#;
-        let mut lines = content.lines().peekable();
-        let result = handle_single_line(&mut lines);
+        let result = handle_single_line(&content);
         assert!(!result.is_empty());
         assert_eq!(result.len(), 1);
         assert_eq!(result.first().unwrap(), "마력 전달과 흡수|cffffcc00(Q)|r ");
@@ -388,8 +253,7 @@ mod tests {
 
     #[test]
     fn test_handle_multi_line() {
-        let content = r#"Researchubertip = [=[
-|c00ff8080
+        let content = r#"|c00ff8080
  ※레벨당 능력
 |c0000ff80직선상 적에게 엄청난 데미지를 입히는 붉은 회오리를 방출합니다.
  |cffffcc00레벨 1|r - 정면 1600범위에 1000의 데미지를 입히는 붉은 회오리를 방출합니다.
@@ -402,7 +266,6 @@ mod tests {
  |cffffcc00레벨 2|r - 정면 1600범위에 1350의 데미지를 입히는 붉은 회오리를 방출합니다."#;
 
         let mut lines = content.lines().peekable();
-        lines.next();
         let result = handle_multi_line(&mut lines);
         assert!(!result.is_empty());
         assert_eq!(result.len(), 1);
