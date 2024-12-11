@@ -10,7 +10,8 @@ pub fn parse_tooltip_files() -> TooltipData {
     let mut data = TooltipData::default();
 
     // Parse source file
-    let source_content = fs::read_to_string(SOURCE_FILE_NAME).expect("Failed to read source file");
+    let bytes = fs::read(SOURCE_FILE_NAME).expect("Failed to read source file");
+    let source_content = String::from_utf8_lossy(&bytes);
     data.skill_manager.skills = parse_content(&source_content);
 
     // Parse translation file

@@ -12,7 +12,9 @@ pub fn export_files(data: &TooltipData) -> Result<(), String> {
 }
 
 pub fn output_files(translation_skills: &BTreeMap<String, SkillData>) -> Result<String, String> {
-    let content = fs::read_to_string(SOURCE_FILE_NAME).expect("Unable to read file");
+    let bytes = fs::read(SOURCE_FILE_NAME).expect("Failed to read source file");
+    let content = String::from_utf8_lossy(&bytes);
+
     let mut lines = content.lines().peekable();
     let mut current_id = String::new();
     let mut output = String::new();
