@@ -6,18 +6,12 @@ use std::fs;
 use std::iter::Peekable;
 
 pub fn export_files(data: &TooltipData) -> Result<(), String> {
-    let output = output_files(
-        &data.skill_manager.skills,
-        &data.skill_manager.translation_skills,
-    )?;
+    let output = output_files(&data.skill_manager.translation_skills)?;
     fs::write(EXPORT_FILE_NAME, output).expect("Unable to write file");
     Ok(())
 }
 
-pub fn output_files(
-    source: &BTreeMap<String, SkillData>,
-    translation_skills: &BTreeMap<String, SkillData>,
-) -> Result<String, String> {
+pub fn output_files(translation_skills: &BTreeMap<String, SkillData>) -> Result<String, String> {
     let content = fs::read_to_string(SOURCE_FILE_NAME).expect("Unable to read file");
     let mut lines = content.lines().peekable();
     let mut current_id = String::new();
@@ -32,14 +26,9 @@ pub fn output_files(
             Some(field_type) => match translation_skills.get(&current_id) {
                 Some(data) => {
                     if let Some(text_type) = data.text_type_map.get(&field_type) {
-                        let source_text_type = source
-                            .get(&current_id)
-                            .ok_or_else(|| format!("找不到原始技能 ID: {}", current_id))?
-                            .text_type_map
-                            .get(&field_type)
-                            .ok_or_else(|| format!("找不到原始字段類型: {:?}", &field_type))?;
-
-                        skip_lines(source_text_type, &mut lines);
+                        let source_text_type = get_text_type(line, &mut lines)
+                            .ok_or_else(|| "Not found text type form source skill")?;
+                        skip_lines(&source_text_type, &mut lines);
                         let field_value = get_field_value(&field_type, text_type, data)?;
                         output.push_line(&field_value);
                     } else {
