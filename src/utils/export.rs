@@ -139,8 +139,9 @@ fn output_field_value(
 
     let field_name = field_type.to_str();
     let result = match text_type {
-        TextType::SingleLine => output_single_line(field_name, value),
-        TextType::MultiLine => output_multi_line(field_name, value),
+        TextType::SingleLine | TextType::MultiLine => {
+            output_single_or_multi_line(field_name, value)
+        }
         TextType::SingleLineArray => output_single_line_array(field_name, value),
         TextType::SingleLineArrayExt => output_single_line_array_ext(field_name, value),
         TextType::MultiLineArray => output_multi_line_array(field_name, value),
@@ -150,21 +151,19 @@ fn output_field_value(
     result
 }
 
-fn output_single_line(field_name: &str, value: &Vec<String>) -> Result<String, String> {
-    (value.len() == 1)
-        .then(|| format!("{} = \"{}\"", field_name, value[0]))
-        .ok_or_else(|| "singleline不合法".to_string())
-}
-
-fn output_multi_line(field_name: &str, value: &Vec<String>) -> Result<String, String> {
+fn output_single_or_multi_line(field_name: &str, value: &Vec<String>) -> Result<String, String> {
     let mut result = String::new();
-    result.push_line(format!("{} = [=[", field_name).as_str());
 
     if value.len() != 1 {
-        return Err("multiline不合法".to_string());
+        return Err("singleline不合法".to_string());
     }
 
-    result.push_str(format!("{}]=]", value[0]).as_str());
+    if value[0].contains('\n') {
+        result.push_line(format!("{} = [=[", field_name).as_str());
+        result.push_str(format!("{}]=]", value[0]).as_str());
+    } else {
+        result.push_str(format!("{} = \"{}\"", field_name, value[0]).as_str());
+    }
     Ok(result)
 }
 
@@ -223,7 +222,7 @@ mod tests {
         let field_name = FieldType::Tip.to_str();
         let sample = String::from("마력 전달과 흡수|cffffcc00(Q)|r ");
         let value = vec![sample];
-        if let Ok(result) = output_single_line(field_name, &value) {
+        if let Ok(result) = output_single_or_multi_line(field_name, &value) {
             assert!(!result.is_empty());
             assert_eq!(result, r#"Tip = "마력 전달과 흡수|cffffcc00(Q)|r ""#);
         } else {
@@ -245,7 +244,7 @@ mod tests {
  |cffffcc00레벨 5|r - 정면 1600범위에 2400의 데미지를 입히는 붉은 회오리를 방출합니다."#,
         );
         let value = vec![sample];
-        if let Ok(result) = output_multi_line(field_name, &value) {
+        if let Ok(result) = output_single_or_multi_line(field_name, &value) {
             assert!(!result.is_empty());
             assert_eq!(
                 result,
